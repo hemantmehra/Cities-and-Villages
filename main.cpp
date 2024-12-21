@@ -31,6 +31,8 @@ enum BuildingType {
 };
 
 struct Work {
+    int cell_x;
+    int cell_y;
     WorkType work;
     BuildingType building;
     int remaining_production;
@@ -61,7 +63,41 @@ struct Civ {
     int food;
     int gold;
     std::vector<Vector2> cells;
-    Work work_slot;
+    Work current_work;
+    std::vector<Work *> available_work;
+
+    void set_available_work(Cell *world)
+    {
+        available_work.clear();
+        for(auto cell: cells) {
+            int x = cell.x;
+            int y = cell.y;
+
+            if (world[POS(x, y)].type == City) {
+                Work *work = new Work;
+                work->cell_x = x;
+                work->cell_y = y;
+                work->building = Market;
+                work->work = Create;
+                work->set_production_required();
+                available_work.push_back(work);
+            }
+
+            if (world[POS(x, y)].type == Village) {
+                Work *work = new Work;
+                work->cell_x = x;
+                work->cell_y = y;
+                work->building = Farm;
+                work->work = Create;
+                work->set_production_required();
+                available_work.push_back(work);
+            }
+
+            if (world[POS(x, y)].type == Capital) {
+                
+            }
+        }
+    }
 
     int next_population_food_target()
     {
@@ -98,6 +134,20 @@ struct Civ {
 struct Game {
     int turn;
 };
+
+std::string get_cell_string(CellType celltype)
+{
+    switch(celltype) {
+        case Capital:
+            return "Capital";
+        case City:
+            return "City";
+        case Village:
+            return "Village";
+        default:
+            return "";
+    }
+}
 
 int main()
 {
@@ -137,11 +187,13 @@ int main()
         if (IsKeyPressed(KEY_C) && cells[POS(selected_r, selected_c)].type == Empty) {
             cells[POS(selected_r, selected_c)].type = City;
             civ.cells.push_back((Vector2){selected_r, selected_c});
+            civ.set_available_work(cells);
         }
 
         if (IsKeyPressed(KEY_V) && cells[POS(selected_r, selected_c)].type == Empty) {
             cells[POS(selected_r, selected_c)].type = Village;
             civ.cells.push_back((Vector2){selected_r, selected_c});
+            civ.set_available_work(cells);
         }
 
         if (IsKeyPressed(KEY_LEFT)) selected_c--;
@@ -150,45 +202,61 @@ int main()
         if (IsKeyPressed(KEY_DOWN)) selected_r++;
 
         BeginDrawing();
-        ClearBackground(BLACK);
+            ClearBackground(BLACK);
 
-        DrawText(TextFormat("Turn: %d", game.turn), cols * cell_size + 5, 0, font_size_default, ORANGE);
-        DrawText(TextFormat("Population: %d", civ.population), cols * cell_size + 5, font_size_default, font_size_default, ORANGE);
-        DrawText(TextFormat("Food: %d", civ.food), cols * cell_size + 5, font_size_default*2, font_size_default, ORANGE);
-        DrawText(TextFormat("Gold: %d", civ.gold), cols * cell_size + 5, font_size_default*3, font_size_default, ORANGE);
+            DrawText(TextFormat("Turn: %d", game.turn), cols * cell_size + 5, 0, font_size_default, ORANGE);
+            DrawText(TextFormat("Population: %d", civ.population), cols * cell_size + 5, font_size_default, font_size_default, ORANGE);
+            DrawText(TextFormat("Food: %d", civ.food), cols * cell_size + 5, font_size_default*2, font_size_default, ORANGE);
+            DrawText(TextFormat("Gold: %d", civ.gold), cols * cell_size + 5, font_size_default*3, font_size_default, ORANGE);
 
-        for (int i=0; i<rows; i++) {
-            for (int j=0; j<cols; j++) {
-                DrawRectangleLines(j*cell_size, i*cell_size, cell_size, cell_size, GRAY);
-                
-                if (i == selected_r && j == selected_c) {
-                    DrawRectangleLines(
-                        j*cell_size+cell_select_padding,
-                        i*cell_size+cell_select_padding,
-                        cell_size-2*cell_select_padding,
-                        cell_size-2*cell_select_padding,
-                        RED
-                    );
-                }
+            int c = 0;
+            for(auto work : civ.available_work) {
+                int x = work->cell_x;
+                int y = work->cell_y;
+                Cell cell = cells[POS(x, y)];
+                std::string s = get_cell_string(cell.type);
+                DrawText(
+                    TextFormat("%s [%d, %d]", s.c_str(), x, y),
+                    cols * cell_size + 5,
+                    150 + font_size_default * c,
+                    font_size_default,
+                    WHITE
+                );
+                c++;
+            }
 
-                if (cells[POS(i, j)].type == Capital) {
-                    DrawCircleLines(
-                        j*cell_size + cell_size/2,
-                        i*cell_size + cell_size/2,
-                        cell_size/3,
-                        GOLD
-                    );
-                }
+            for (int i=0; i<rows; i++) {
+                for (int j=0; j<cols; j++) {
+                    DrawRectangleLines(j*cell_size, i*cell_size, cell_size, cell_size, GRAY);
+                    
+                    if (i == selected_r && j == selected_c) {
+                        DrawRectangleLines(
+                            j*cell_size+cell_select_padding,
+                            i*cell_size+cell_select_padding,
+                            cell_size-2*cell_select_padding,
+                            cell_size-2*cell_select_padding,
+                            RED
+                        );
+                    }
 
-                if (cells[POS(i, j)].type == City) {
-                    DrawText("C", j*cell_size + 5, i*cell_size + 5, 16, BLUE);
-                }
+                    if (cells[POS(i, j)].type == Capital) {
+                        DrawCircleLines(
+                            j*cell_size + cell_size/2,
+                            i*cell_size + cell_size/2,
+                            cell_size/3,
+                            GOLD
+                        );
+                    }
 
-                if (cells[POS(i, j)].type == Village) {
-                    DrawText("V", j*cell_size + 5, i*cell_size + 5, 16, YELLOW);
+                    if (cells[POS(i, j)].type == City) {
+                        DrawText("C", j*cell_size + 5, i*cell_size + 5, 16, BLUE);
+                    }
+
+                    if (cells[POS(i, j)].type == Village) {
+                        DrawText("V", j*cell_size + 5, i*cell_size + 5, 16, YELLOW);
+                    }
                 }
             }
-        }
 
         EndDrawing();
     }
