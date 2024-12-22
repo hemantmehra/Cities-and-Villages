@@ -63,7 +63,7 @@ struct Civ {
     int food;
     int gold;
     std::vector<Vector2> cells;
-    Work current_work;
+    Work *current_work;
     std::vector<Work *> available_work;
 
     void set_available_work(Cell *world)
@@ -131,8 +131,14 @@ struct Civ {
     }
 };
 
+enum SelectType {
+    Select_Map,
+    Select_Option
+};
+
 struct Game {
     int turn;
+    SelectType current_selection;
 };
 
 std::string get_cell_string(CellType celltype)
@@ -157,11 +163,12 @@ int main()
     const int cell_select_padding = 5;
     const int font_size_default = 24;
 
-    Game game = {0};
+    Game game = {0, Select_Map};
     Civ civ;
     Cell cells[100];
     int selected_r = 5;
     int selected_c = 5;
+    int selected_option = 0;
     for (int i=0; i<rows; i++) {
         for (int j=0; j<cols; j++) {
             cells[POS(i, j)].type = Empty;
@@ -171,6 +178,7 @@ int main()
     civ.population = 4;
     civ.food = 4;
     civ.gold = 2;
+    civ.current_work = NULL;
 
     cells[POS(5, 5)].type = Capital;
 
@@ -180,8 +188,20 @@ int main()
         if (IsKeyPressed(KEY_Q)) break;
 
         if (IsKeyPressed(KEY_ENTER)) {
-            game.turn++;
-            civ.next_turn(cells);
+            if (game.current_selection == Select_Map) {
+                game.turn++;
+                civ.next_turn(cells);
+                if (civ.current_work != NULL) {
+                    civ.current_work->remaining_production--;
+                    if (civ.current_work->remaining_production == 0) {
+                        civ.current_work = NULL;
+                    }
+                }
+            }
+            if (game.current_selection == Select_Option) {
+                civ.current_work = civ.available_work.at(selected_option);
+                game.current_selection = Select_Map;
+            }
         }
 
         if (IsKeyPressed(KEY_C) && cells[POS(selected_r, selected_c)].type == Empty) {
@@ -198,8 +218,22 @@ int main()
 
         if (IsKeyPressed(KEY_LEFT)) selected_c--;
         if (IsKeyPressed(KEY_RIGHT)) selected_c++;
-        if (IsKeyPressed(KEY_UP)) selected_r--;
-        if (IsKeyPressed(KEY_DOWN)) selected_r++;
+        if (IsKeyPressed(KEY_UP)) {
+            if (game.current_selection == Select_Map) selected_r--;
+            if (game.current_selection == Select_Option) {
+                selected_option = std::max(0, selected_option - 1);
+            }
+        }
+        if (IsKeyPressed(KEY_DOWN)) {
+            if (game.current_selection == Select_Map) selected_r++;
+            if (game.current_selection == Select_Option) {
+                selected_option = std::min((int)civ.available_work.size() - 1, selected_option + 1);
+            }
+        }
+
+        if (civ.current_work == NULL && civ.available_work.size() > 0) {
+            game.current_selection = Select_Option;
+        }
 
         BeginDrawing();
             ClearBackground(BLACK);
@@ -210,6 +244,21 @@ int main()
             DrawText(TextFormat("Gold: %d", civ.gold), cols * cell_size + 5, font_size_default*3, font_size_default, ORANGE);
 
             int c = 0;
+
+            if (civ.current_work != NULL) {
+                int x = civ.current_work->cell_x;
+                int y = civ.current_work->cell_y;
+                Cell cell = cells[POS(x, y)];
+                std::string s = get_cell_string(cell.type);
+                DrawText(
+                    TextFormat("Current: %s [%d %d], Remaining: %d", s.c_str(), x, y, civ.current_work->remaining_production),
+                    cols * cell_size + 10,
+                    100 + font_size_default * c,
+                    font_size_default,
+                    GREEN
+                );
+            }
+
             for(auto work : civ.available_work) {
                 int x = work->cell_x;
                 int y = work->cell_y;
@@ -217,11 +266,13 @@ int main()
                 std::string s = get_cell_string(cell.type);
                 DrawText(
                     TextFormat("%s [%d, %d]", s.c_str(), x, y),
-                    cols * cell_size + 5,
+                    cols * cell_size + 10,
                     150 + font_size_default * c,
                     font_size_default,
                     WHITE
                 );
+                if (selected_option == c && game.current_selection == Select_Option)
+                DrawRectangle(cols * cell_size + 5, 150 + font_size_default * c, 5, font_size_default, RED);
                 c++;
             }
 
@@ -229,7 +280,7 @@ int main()
                 for (int j=0; j<cols; j++) {
                     DrawRectangleLines(j*cell_size, i*cell_size, cell_size, cell_size, GRAY);
                     
-                    if (i == selected_r && j == selected_c) {
+                    if (i == selected_r && j == selected_c && game.current_selection == Select_Map) {
                         DrawRectangleLines(
                             j*cell_size+cell_select_padding,
                             i*cell_size+cell_select_padding,
